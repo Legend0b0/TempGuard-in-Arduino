@@ -22,10 +22,6 @@ sinal sonoro é ativado.
 #define LIMHIGH 60
 #define LIMLOW 0
 
-// Pinagem dos leds
-#define led_red 8
-#define led_green 9
-
 // Pinagem do botão
 #define Bottom 3
 
@@ -39,7 +35,7 @@ LiquidCrystal lcd(12, 11, 7, 6, 5, 4);
 DHT dht(DHTPIN, DHTTYPE);
 float oldtemp = 0;
 float newtemp = 0;
-bool trade = 0;
+volatile bool trade = 0;
 
 // Setando variaveis para o buzzer
 int hz = 440;
@@ -139,8 +135,7 @@ void Fahrenheit(float temp)
 // Função que ascende o led vermelho e aciona o sinal de warning no LCD
 void Red()
 {
-  digitalWrite(led_red, HIGH);
-  digitalWrite(led_green, LOW);
+  PORTB = PORTB & ~(1 << PB1) | (1 << PB0);
   
   lcd.setCursor(11,0);
   lcd.print("\x04");
@@ -155,14 +150,28 @@ void Red()
 // Função que ascende o led verde
 void Green()
 {
+  PORTB = PORTB & ~(1 << PB0) | (1 << PB1);
+ 
   noTone(Buzzer);
-
-  digitalWrite(led_red, LOW);
-  digitalWrite(led_green, HIGH);
+  hz = 440;
 }
 
-// Interrupção - Troca da grandeza de temperatura
-void interrupt()
+void Sirene()
+{
+  // Tocar sirene com o buzzer
+  if(hz < 1400)
+  {
+    tone(Buzzer, hz);
+    delay(1);
+    hz++;
+  }
+  else
+  {
+    hz = 440;
+  }
+}
+
+ISR(INT1_vect)
 {
   if(fpTemp == Celsius)
   {
@@ -193,15 +202,15 @@ void setup()
   lcd.createChar(6, danger3);
   lcd.createChar(7, danger4);
 
-  // Pinmode dos leds como OUTPUT
-  pinMode(led_red, OUTPUT);
-  pinMode(led_green, OUTPUT);
+  // Leds como OUTPUT
+  DDRB = DDRB | (1 << DDB0) | (1 << DDB1);
 
-  // Pinmode dos botão como INPUT
-  pinMode(Bottom, INPUT);
+  // Botão como INPUT e Buzzer como OUTPUT 
+  DDRD = DDRD & ~(1 << DDD3) | (1 << DDD2);
 
   // Declaração da Interrupção
-  attachInterrupt(digitalPinToInterrupt(Bottom), interrupt, RISING);
+  EICRA = (EICRA | (1 << ISC11)) & ~(1 << ISC10);
+  EIMSK = EIMSK | (1 << INT1);
 
   // Preparação das variaveis para começar o loop
   fpTemp = Celsius;
@@ -248,17 +257,7 @@ void loop()
     // Confere se esta na situação de risco
     if(fpLed == Red)
     {
-      // Tocar sirene com o buzzer
-      if(hz < 1400)
-      {
-        tone(Buzzer, hz);
-        delay(1);
-        hz++;
-      }
-      else
-      {
-        hz = 440;
-      }
+      Sirene();
     }
   }
   else
